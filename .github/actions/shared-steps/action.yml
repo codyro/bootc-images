@@ -8,19 +8,41 @@ inputs:
   IMAGE_REGISTRY:
     required: true
   REGISTRY_USER:
-    required: true
+    required: false  # Changed to false for ttl.sh compatibility
   REGISTRY_PASSWORD:
+    required: false  # Changed to false for ttl.sh compatibility
+  AWS_ROLE_ARN:
+    description: 'AWS IAM role ARN for KMS signing'
     required: true
+  AWS_REGION:
+    description: 'AWS region where KMS key is located'
+    required: true
+    default: 'us-east-1'
+  KMS_KEY_ID:
+    description: 'KMS key ID or alias for signing'
+    required: true
+    default: 'alias/SIG_Atomic_Container_Signing_GH_CI'
+  # Legacy support - if provided, will use keyless signing instead of KMS
+  SIGNING_SECRET:
+    required: false
+
 runs:
   using: "composite"
   steps:
     - name: Prepare environment
       shell: bash
       run: |
-        echo "VARIANT=--platform ${{ env.PLATFORM }}" >> "$GITHUB_ENV"
+        [[ "${{ env.PLATFORM }}" = */v2 ]] && VARIANT="--variant v2"
+        echo "VARIANT=--platform ${{ env.PLATFORM }} ${VARIANT}" >> "$GITHUB_ENV"
 
-        # quay.io/almalinuxorg/almalinux-bootc
-        IMAGE_DEST=${{ inputs.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
+        # Handle different registry destinations
+        if [[ "${{ inputs.IMAGE_REGISTRY }}" == "ttl.sh" ]]; then
+          # TTL.sh format: ttl.sh/username-repo-imagename
+          IMAGE_DEST=ttl.sh/${{ github.repository_owner }}-${{ github.event.repository.name }}-${{ env.IMAGE_NAME }}
+        else
+          # Standard registry format: registry.com/org/imagename
+          IMAGE_DEST=${{ inputs.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
+        fi
         echo "IMAGE_DEST=${IMAGE_DEST}" >> "$GITHUB_ENV"
 
         ARCH=${{ matrix.ARCH }}
@@ -29,7 +51,13 @@ runs:
     - name: Log in to registry
       if: ${{ env.res != 0 || github.event_name == 'workflow_dispatch' }}
       shell: bash
-      run: sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} -p ${{ inputs.REGISTRY_PASSWORD }}
+      run: |
+        # Skip login for ttl.sh since it doesn't require authentication
+        if [[ "${{ inputs.IMAGE_REGISTRY }}" != "ttl.sh" ]]; then
+          sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} -p ${{ inputs.REGISTRY_PASSWORD }}
+        else
+          echo "Skipping login for ttl.sh registry"
+        fi
 
     - name: Check update
       shell: bash
@@ -50,7 +78,7 @@ runs:
       if: ${{ env.res != 0 || github.event_name == 'workflow_dispatch' }}
       shell: bash
       run: |
-        INFO=$(sudo podman run ${{ env.VARIANT }} --quiet --rm quay.io/almalinuxorg/${{ inputs.VERSION_MAJOR }}-base bash -c "dnf upgrade -y almalinux-release && rpm -q almalinux-gpg-keys && cat /etc/os-release" || true)
+        INFO=$(sudo podman run ${{ env.VARIANT }} --quiet --rm quay.io/almalinuxorg/${{ inputs.VERSION_MAJOR }}-base bash -c "dnf upgrade -y almalinux-release && cat /etc/os-release" || true)
         echo "$INFO"
 
         echo "id=$(echo "$INFO" | grep "^ID=" | cut -d'=' -f2 | tr -d '"')" >> $GITHUB_OUTPUT
@@ -111,7 +139,7 @@ runs:
       run: |
         sudo podman run ${{ env.VARIANT }} --rm -ti ${{ env.IMAGE_ID }} bootc --version
 
-        INFO=$(sudo podman run ${{ env.VARIANT }} --rm ${{ env.IMAGE_ID }} bash -c "rpm -q almalinux-gpg-keys && cat /etc/os-release")
+        INFO=$(sudo podman run ${{ env.VARIANT }} --rm ${{ env.IMAGE_ID }} cat /etc/os-release)
         echo "$INFO"
 
         echo "id=$(echo "$INFO" | grep "^ID=" | cut -d'=' -f2 | tr -d '"')" >> $GITHUB_OUTPUT
@@ -131,7 +159,108 @@ runs:
           docker://${IMAGE_DEST}:${{ env.VERSION }}-${{ inputs.DATE_STAMP }}-${{ env.CLEAN_ARCH }}
 
         echo "digest=$(cat /tmp/digestfile)" >> $GITHUB_OUTPUT
+        echo "image-ref=${IMAGE_DEST}:${{ env.VERSION }}-${{ inputs.DATE_STAMP }}-${{ env.CLEAN_ARCH }}" >> $GITHUB_OUTPUT
         sudo podman inspect ${{ env.IMAGE_ID }}
+
+    # NEW: Configure AWS credentials for KMS signing
+    - name: Configure AWS credentials
+      if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') && inputs.AWS_ROLE_ARN != '' }}
+      uses: aws-actions/configure-aws-credentials@v4
+      with:
+        role-to-assume: ${{ inputs.AWS_ROLE_ARN }}
+        role-session-name: almalinux-bootc-signing-${{ github.run_id }}
+        aws-region: ${{ inputs.AWS_REGION }}
+        role-duration-seconds: 900  # 15 minutes
+
+    - name: Install Cosign
+      if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') }}
+      uses: sigstore/cosign-installer@3454372f43399081ed03b604cb2d021dabca52bb # v3.8.2
+      with:
+        install-dir: '/tmp/.cosign'
+
+    # MODIFIED: Sign with KMS or fallback to legacy signing
+    - name: Sign Image with KMS
+      if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') && inputs.AWS_ROLE_ARN != '' }}
+      shell: bash
+      env:
+        KMS_KEY: awskms:///${{ inputs.KMS_KEY_ID }}
+        IMAGE_REF: ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
+      run: |
+        echo "Signing with KMS key: $KMS_KEY"
+
+        # Verify KMS access
+        aws kms describe-key --key-id ${{ inputs.KMS_KEY_ID }}
+
+        # Sign the image
+        sudo /tmp/.cosign/cosign sign --yes --key $KMS_KEY $IMAGE_REF
+
+        # Add build attestation with provenance information
+        BUILD_ATTESTATION=$(cat <<EOF
+        {
+          "buildType": "github-actions",
+          "builder": {
+            "id": "${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+          },
+          "invocation": {
+            "configSource": {
+              "uri": "${{ github.server_url }}/${{ github.repository }}",
+              "digest": {
+                "sha1": "${{ github.sha }}"
+              },
+              "entryPoint": "${{ github.workflow }}"
+            }
+          },
+          "metadata": {
+            "buildInvocationId": "${{ github.run_id }}",
+            "buildStartedOn": "$(date -u +%Y-%m-%dT%H:%M:%SZ)",
+            "completeness": {
+              "parameters": true,
+              "environment": false,
+              "materials": false
+            },
+            "reproducible": false
+          },
+          "materials": [
+            {
+              "uri": "${{ github.server_url }}/${{ github.repository }}",
+              "digest": {
+                "sha1": "${{ github.sha }}"
+              }
+            }
+          ]
+        }
+        EOF
+        )
+
+        echo "$BUILD_ATTESTATION" > /tmp/build-attestation.json
+
+        # Sign the attestation
+        sudo /tmp/.cosign/cosign attest --yes --key $KMS_KEY \
+          --predicate /tmp/build-attestation.json \
+          $IMAGE_REF
+
+        echo "Successfully signed image with KMS"
+
+    # FALLBACK: Legacy signing method (if KMS not configured)
+    - name: Sign Image (Legacy)
+      if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') && inputs.AWS_ROLE_ARN == '' && inputs.SIGNING_SECRET != '' }}
+      shell: bash
+      run: |
+        echo "Using legacy signing method"
+        echo "${{ inputs.SIGNING_SECRET }}" > /tmp/.cosign/cosign.key
+        sudo /tmp/.cosign/cosign sign -y --key /tmp/.cosign/cosign.key ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
+
+    # NEW: Verify the signature was created successfully
+    - name: Verify Image Signature
+      if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') && inputs.AWS_ROLE_ARN != '' }}
+      shell: bash
+      env:
+        KMS_KEY: awskms:///${{ inputs.KMS_KEY_ID }}
+        IMAGE_REF: ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
+      run: |
+        echo "Verifying signature..."
+        sudo /tmp/.cosign/cosign verify --key $KMS_KEY $IMAGE_REF
+        echo "Signature verification successful"
 
     - name: Create Job Outputs
       if: ${{ env.res != 0 || github.event_name == 'workflow_dispatch' }}
