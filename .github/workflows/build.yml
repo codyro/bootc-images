@@ -29,7 +29,7 @@ env:
   VERSIONS_LIST: '"9", "10-kitten", "10"'
   # AWS KMS Configuration
   AWS_REGION: us-east-1
-  KMS_KEY_ID: alias/SIG_Atomic_Container_Signing_GH_CI
+  KMS_KEY_ID: SIG_Atomic_Container_Signing_GH_CI
 
 jobs:
   set-versions-matrix:
