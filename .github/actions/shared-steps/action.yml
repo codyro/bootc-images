@@ -53,7 +53,7 @@ runs:
       shell: bash
       run: |
         # Login to registry (all registries require authentication)
-        sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} -p ${{ inputs.REGISTRY_PASSWORD }}
+        echo "${{ inputs.REGISTRY_PASSWORD }}" | sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} --password-stdin
 
     - name: Check update
       shell: bash
