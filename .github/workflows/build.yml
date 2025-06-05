@@ -183,7 +183,9 @@ jobs:
     name: Verify signatures
     runs-on: ubuntu-24.04
     needs: [set-versions-matrix, build-amd64, build-arm64]
-    if: ${{ always() && contains(join(needs.*.result, ','), 'success') && secrets.AWS_ACCOUNT_ID != '' }}
+    if: ${{ always() && contains(join(needs.*.result, ','), 'success') }}
+    env:
+      AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
     strategy:
       fail-fast: false
       matrix:
@@ -193,20 +195,33 @@ jobs:
       DATE_STAMP: ${{ needs.set-versions-matrix.outputs.date_stamp }}
 
     steps:
+      - name: Check AWS credentials
+        id: check-aws
+        run: |
+          if [[ -n "${{ env.AWS_ACCOUNT_ID }}" ]]; then
+            echo "aws_available=true" >> $GITHUB_OUTPUT
+          else
+            echo "aws_available=false" >> $GITHUB_OUTPUT
+            echo "AWS credentials not available, skipping signature verification"
+          fi
+
       - name: Configure AWS credentials
+        if: steps.check-aws.outputs.aws_available == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing
+          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing
           role-session-name: almalinux-signature-verification-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 900  # 15 min for AWS
 
       - name: Install Cosign
+        if: steps.check-aws.outputs.aws_available == 'true'
         uses: sigstore/cosign-installer@v3
         with:
           cosign-release: 'v2.2.4'
 
       - name: Verify signatures
+        if: steps.check-aws.outputs.aws_available == 'true'
         env:
           KMS_KEY: awskms:///${{ env.KMS_KEY_ID }}
         run: |
