@@ -25,6 +25,9 @@ inputs:
   # Legacy support - if provided, will use keyless signing instead of KMS
   SIGNING_SECRET:
     required: false
+  GITHUB_TOKEN:
+    description: 'GitHub token for GHCR authentication'
+    required: false
 
 runs:
   using: "composite"
@@ -55,7 +58,7 @@ runs:
         # Login to registry (all registries require authentication)
         if [[ "${{ inputs.IMAGE_REGISTRY }}" == "ghcr.io" ]]; then
           # For GHCR (forks), use GitHub token directly to avoid masking issues
-          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} --password-stdin
+          echo "${{ inputs.GITHUB_TOKEN }}" | sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} --password-stdin
         else
           # For production registries, use the provided password
           echo "${{ inputs.REGISTRY_PASSWORD }}" | sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} --password-stdin

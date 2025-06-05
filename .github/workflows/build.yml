@@ -118,6 +118,7 @@ jobs:
         AWS_ROLE_ARN: arn:aws:iam::${{ needs.set-versions-matrix.outputs.aws_account_id }}:role/SIG_Atomic_GHA_Container_Signing
         AWS_REGION: ${{ env.AWS_REGION }}
         KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-amd64-v2:
     if: ${{ always() && (contains(fromJSON(needs.set-versions-matrix.outputs.matrix), '10') || contains(fromJSON(needs.set-versions-matrix.outputs.matrix), '10-kitten')) }}
