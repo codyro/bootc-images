@@ -36,9 +36,9 @@ runs:
         echo "VARIANT=--platform ${{ env.PLATFORM }} ${VARIANT}" >> "$GITHUB_ENV"
 
         # Handle different registry destinations
-        if [[ "${{ inputs.IMAGE_REGISTRY }}" == "ttl.sh" ]]; then
-          # TTL.sh format: ttl.sh/username-repo-imagename
-          IMAGE_DEST=ttl.sh/${{ github.repository_owner }}-${{ github.event.repository.name }}-${{ env.IMAGE_NAME }}
+        if [[ "${{ inputs.IMAGE_REGISTRY }}" == "ghcr.io" ]]; then
+          # GHCR format: ghcr.io/username/repo/imagename
+          IMAGE_DEST=ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}
         else
           # Standard registry format: registry.com/org/imagename
           IMAGE_DEST=${{ inputs.IMAGE_REGISTRY }}/${{ env.IMAGE_NAME }}
@@ -52,12 +52,8 @@ runs:
       if: ${{ env.res != 0 || github.event_name == 'workflow_dispatch' }}
       shell: bash
       run: |
-        # Skip login for ttl.sh since it doesn't require authentication
-        if [[ "${{ inputs.IMAGE_REGISTRY }}" != "ttl.sh" ]]; then
-          sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} -p ${{ inputs.REGISTRY_PASSWORD }}
-        else
-          echo "Skipping login for ttl.sh registry"
-        fi
+        # Login to registry (all registries require authentication)
+        sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} -p ${{ inputs.REGISTRY_PASSWORD }}
 
     - name: Check update
       shell: bash

@@ -80,10 +80,10 @@ jobs:
             echo "registry_user=${{ secrets.REGISTRY_USER }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.REGISTRY_PASSWORD }}" >> $GITHUB_OUTPUT
           else
-            # Testing: use ttl.sh (no auth required)
-            echo "image_registry=ttl.sh" >> $GITHUB_OUTPUT
-            echo "registry_user=" >> $GITHUB_OUTPUT
-            echo "registry_password=" >> $GITHUB_OUTPUT
+            # Testing: use GitHub Container Registry
+            echo "image_registry=ghcr.io" >> $GITHUB_OUTPUT
+            echo "registry_user=${{ github.actor }}" >> $GITHUB_OUTPUT
+            echo "registry_password=${{ github.token }}" >> $GITHUB_OUTPUT
           fi
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -216,12 +216,12 @@ jobs:
           KMS_KEY: awskms:///${{ env.KMS_KEY_ID }}
         run: |
           # Handle different registry destinations for verification
-          if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ttl.sh" ]]; then
-            # TTL.sh format: ttl.sh/username-repo-imagename
-            IMAGE_DEST="ttl.sh/${{ github.repository_owner }}-${{ github.event.repository.name }}-${{ env.IMAGE_NAME }}"
+          if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ghcr.io" ]]; then
+            # GHCR format: ghcr.io/username/repo/imagename
+            IMAGE_DEST="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}"
 
-            # For ttl.sh, use simplified tag format without version parsing
-            echo "Verifying signatures for TTL.sh registry"
+            # For GHCR, use simplified tag format without version parsing
+            echo "Verifying signatures for GitHub Container Registry"
 
             # AMD64
             amd64_tag="${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-amd64"
@@ -311,7 +311,7 @@ jobs:
           registry: ${{ needs.set-versions-matrix.outputs.image_registry }}
           username: ${{ needs.set-versions-matrix.outputs.registry_user }}
           password: ${{ needs.set-versions-matrix.outputs.registry_password }}
-        # Skip login for ttl.sh since it doesn't require authentication
+        # Login is always required for all registries
         if: ${{ needs.set-versions-matrix.outputs.registry_user != '' }}
 
       - name: Create and push manifest (docker)
@@ -319,13 +319,13 @@ jobs:
           # Manifest for both amd64 and arm64
           IMAGE_DEST=${{ needs.set-versions-matrix.outputs.image_registry }}/${{ env.IMAGE_NAME }}
 
-          # For ttl.sh, use a simpler naming scheme and shorter TTL
-          if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ttl.sh" ]]; then
-            # TTL.sh format: ttl.sh/USERNAME-REPO-IMAGENAME:TAG (24h default TTL)
-            IMAGE_DEST="ttl.sh/${{ github.repository_owner }}-${{ github.event.repository.name }}-${{ env.IMAGE_NAME }}"
+          # For GHCR, use a simpler naming scheme for testing
+          if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ghcr.io" ]]; then
+            # GHCR format: ghcr.io/username/repo/imagename:tag
+            IMAGE_DEST="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}"
 
             # For testing, create a simple manifest with available images
-            echo "Creating test manifest for TTL.sh registry"
+            echo "Creating test manifest for GitHub Container Registry"
 
             # Check what images exist and create manifest accordingly
             AVAILABLE_IMAGES=""
@@ -346,7 +346,7 @@ jobs:
             fi
 
             if [[ -n "${AVAILABLE_IMAGES}" ]]; then
-              # Create test manifest (shorter TTL for testing)
+              # Create test manifest
               docker manifest create ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} ${AVAILABLE_IMAGES}
               docker manifest push ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}
               echo "Created test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
@@ -402,9 +402,9 @@ jobs:
         run: |
           IMAGE_DEST=${{ needs.set-versions-matrix.outputs.image_registry }}/${{ env.IMAGE_NAME }}
 
-          # For ttl.sh, use the modified image destination and simpler signing
-          if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ttl.sh" ]]; then
-            IMAGE_DEST="ttl.sh/${{ github.repository_owner }}-${{ github.event.repository.name }}-${{ env.IMAGE_NAME }}"
+          # For GHCR, use the modified image destination and simpler signing
+          if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ghcr.io" ]]; then
+            IMAGE_DEST="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}"
 
             echo "Signing test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
             cosign sign --yes --key $KMS_KEY ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} || echo "Failed to sign test manifest (this is expected for testing)"
