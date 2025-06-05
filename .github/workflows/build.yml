@@ -70,8 +70,15 @@ jobs:
       - name: Set AWS Role and Registry based on repository
         id: set-aws-role
         run: |
+          # Debug: Show what we're working with
+          echo "DEBUG: Repository owner: ${{ github.repository_owner }}"
+          echo "DEBUG: AWS_ACCOUNT_ID secret length: ${#AWS_ACCOUNT_ID}"
+          echo "DEBUG: AWS_ACCOUNT_ID value: ${AWS_ACCOUNT_ID}"
+          
           # Use same role for both production and testing for now
-          echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
+          AWS_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/SIG_Atomic_GHA_Container_Signing"
+          echo "DEBUG: Constructed ARN: ${AWS_ROLE_ARN}"
+          echo "aws_role_arn=${AWS_ROLE_ARN}" >> $GITHUB_OUTPUT
 
           # Set registry based on repository owner
           if [[ "${{ github.repository_owner }}" == "almalinux" ]]; then
@@ -85,6 +92,8 @@ jobs:
             echo "registry_user=" >> $GITHUB_OUTPUT
             echo "registry_password=" >> $GITHUB_OUTPUT
           fi
+        env:
+          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
   build-amd64:
     name: amd64 image
@@ -186,7 +195,7 @@ jobs:
     name: Verify signatures
     runs-on: ubuntu-24.04
     needs: [set-versions-matrix, build-amd64, build-arm64]
-    if: ${{ always() && contains(join(needs.*.result, ','), 'success') }}
+    if: ${{ always() && contains(join(needs.*.result, ','), 'success') && needs.set-versions-matrix.outputs.aws_role_arn != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -387,6 +396,7 @@ jobs:
           role-session-name: almalinux-manifest-signing-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 600  # 10 minutes
+          audience: sts.amazonaws.com
 
       - name: Install Cosign for manifest signing
         uses: sigstore/cosign-installer@v3
