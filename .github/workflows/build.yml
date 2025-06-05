@@ -204,7 +204,7 @@ jobs:
           role-to-assume: arn:aws:iam::${{ needs.set-versions-matrix.outputs.aws_account_id }}:role/SIG_Atomic_GHA_Container_Signing
           role-session-name: almalinux-signature-verification-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
-          role-duration-seconds: 300  # 5 minutes for verification
+          role-duration-seconds: 900  # 15 min for AWS
 
       - name: Install Cosign
         uses: sigstore/cosign-installer@v3
