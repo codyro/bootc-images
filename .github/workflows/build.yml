@@ -79,6 +79,9 @@ jobs:
           AWS_ROLE_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:role/SIG_Atomic_GHA_Container_Signing"
           echo "DEBUG: Constructed ARN: ${AWS_ROLE_ARN}"
           echo "aws_role_arn=${AWS_ROLE_ARN}" >> $GITHUB_OUTPUT
+          echo "DEBUG: Wrote to GITHUB_OUTPUT: aws_role_arn=${AWS_ROLE_ARN}"
+          echo "DEBUG: GITHUB_OUTPUT file contents:"
+          cat $GITHUB_OUTPUT
 
           # Set registry based on repository owner
           if [[ "${{ github.repository_owner }}" == "almalinux" ]]; then
