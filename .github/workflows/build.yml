@@ -38,7 +38,6 @@ jobs:
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
       date_stamp: ${{ steps.date-stamp.outputs.date_stamp }}
-      aws_account_id: ${{ steps.set-aws-role.outputs.aws_account_id }}
       image_registry: ${{ steps.set-aws-role.outputs.image_registry }}
       registry_user: ${{ steps.set-aws-role.outputs.registry_user }}
       registry_password: ${{ steps.set-aws-role.outputs.registry_password }}
@@ -70,9 +69,6 @@ jobs:
       - name: Set AWS Role and Registry based on repository
         id: set-aws-role
         run: |
-          # Output AWS account ID (will be used to construct ARN in other jobs)
-          echo "aws_account_id=${AWS_ACCOUNT_ID}" >> $GITHUB_OUTPUT
-
           # Set registry based on repository owner
           if [[ "${{ github.repository_owner }}" == "almalinux" ]]; then
             # Production: use configured registry (Quay.io)
@@ -85,8 +81,6 @@ jobs:
             echo "registry_user=${{ github.actor }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
           fi
-        env:
-          AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
 
   build-amd64:
     name: amd64 image
@@ -115,7 +109,7 @@ jobs:
         REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
         REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
         # NEW: KMS signing configuration
-        AWS_ROLE_ARN: arn:aws:iam::${{ needs.set-versions-matrix.outputs.aws_account_id }}:role/SIG_Atomic_GHA_Container_Signing
+        AWS_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing
         AWS_REGION: ${{ env.AWS_REGION }}
         KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -189,7 +183,7 @@ jobs:
     name: Verify signatures
     runs-on: ubuntu-24.04
     needs: [set-versions-matrix, build-amd64, build-arm64]
-    if: ${{ always() && contains(join(needs.*.result, ','), 'success') && needs.set-versions-matrix.outputs.aws_account_id != '' }}
+    if: ${{ always() && contains(join(needs.*.result, ','), 'success') && secrets.AWS_ACCOUNT_ID != '' }}
     strategy:
       fail-fast: false
       matrix:
@@ -202,7 +196,7 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ needs.set-versions-matrix.outputs.aws_account_id }}:role/SIG_Atomic_GHA_Container_Signing
+          role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing
           role-session-name: almalinux-signature-verification-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 900  # 15 min for AWS
