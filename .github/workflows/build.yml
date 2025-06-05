@@ -83,7 +83,7 @@ jobs:
             # Testing: use GitHub Container Registry
             echo "image_registry=ghcr.io" >> $GITHUB_OUTPUT
             echo "registry_user=${{ github.actor }}" >> $GITHUB_OUTPUT
-            echo "registry_password=${{ github.token }}" >> $GITHUB_OUTPUT
+            echo "registry_password=${{ secrets.GITHUB_TOKEN}}" >> $GITHUB_OUTPUT
           fi
         env:
           AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
