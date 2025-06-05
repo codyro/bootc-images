@@ -53,7 +53,13 @@ runs:
       shell: bash
       run: |
         # Login to registry (all registries require authentication)
-        echo "${{ inputs.REGISTRY_PASSWORD }}" | sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} --password-stdin
+        if [[ "${{ inputs.IMAGE_REGISTRY }}" == "ghcr.io" ]]; then
+          # For GHCR (forks), use GitHub token directly to avoid masking issues
+          echo "${{ secrets.GITHUB_TOKEN }}" | sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} --password-stdin
+        else
+          # For production registries, use the provided password
+          echo "${{ inputs.REGISTRY_PASSWORD }}" | sudo podman login ${{ inputs.IMAGE_REGISTRY }} -u ${{ inputs.REGISTRY_USER }} --password-stdin
+        fi
 
     - name: Check update
       shell: bash

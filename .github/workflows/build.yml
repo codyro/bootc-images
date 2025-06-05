@@ -310,7 +310,7 @@ jobs:
         with:
           registry: ${{ needs.set-versions-matrix.outputs.image_registry }}
           username: ${{ needs.set-versions-matrix.outputs.registry_user }}
-          password: ${{ needs.set-versions-matrix.outputs.registry_password }}
+          password: ${{ needs.set-versions-matrix.outputs.image_registry == 'ghcr.io' && secrets.GITHUB_TOKEN || needs.set-versions-matrix.outputs.registry_password }}
         # Login is always required for all registries
         if: ${{ needs.set-versions-matrix.outputs.registry_user != '' }}
 
