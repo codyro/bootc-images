@@ -15,7 +15,7 @@ on:
 
   schedule:
     # run every day at 03:00 UTC
-    - cron:  '00 03 * * *'
+    - cron: '00 03 * * *'
 
 # REQUIRED: Set up permissions for OIDC token and KMS access
 permissions:
@@ -164,22 +164,22 @@ jobs:
       DATE_STAMP: ${{ needs.set-versions-matrix.outputs.date_stamp }}
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    - uses: ./.github/actions/shared-steps
-      name: Build and Push (${{ env.VERSION_MAJOR }})
-      with:
-        VERSION_MAJOR: ${{ matrix.VERSION_MAJOR }}
-        DATE_STAMP: ${{ env.DATE_STAMP }}
-        IMAGE_REGISTRY: ${{ needs.set-versions-matrix.outputs.image_registry }}
-        REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
-        REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
-        # NEW: KMS signing configuration
-        AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
-        AWS_REGION: ${{ env.AWS_REGION }}
-        KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
+      - uses: ./.github/actions/shared-steps
+        name: Build and Push (${{ env.VERSION_MAJOR }})
+        with:
+          VERSION_MAJOR: ${{ matrix.VERSION_MAJOR }}
+          DATE_STAMP: ${{ env.DATE_STAMP }}
+          IMAGE_REGISTRY: ${{ needs.set-versions-matrix.outputs.image_registry }}
+          REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
+          REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
+          # NEW: KMS signing configuration
+          AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
 
   # NEW: Optional job to verify all signatures after building
   verify-signatures:
@@ -190,13 +190,13 @@ jobs:
     env:
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
+      DATE_STAMP: ${{ needs.set-versions-matrix.outputs.date_stamp }}
+      AWS_REGION: ${{ env.AWS_REGION }}
+      KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
     strategy:
       fail-fast: false
       matrix:
         VERSION_MAJOR: ${{ fromJSON(needs.set-versions-matrix.outputs.matrix) }}
-
-    env:
-      DATE_STAMP: ${{ needs.set-versions-matrix.outputs.date_stamp }}
 
     steps:
       - name: Check AWS credentials
@@ -329,7 +329,7 @@ jobs:
         if: ${{ needs.set-versions-matrix.outputs.registry_user != '' }}
 
       - name: Create and push manifest (docker)
-        run:  |
+        run: |
           # Manifest for both amd64 and arm64
           IMAGE_DEST=${{ needs.set-versions-matrix.outputs.image_registry }}/${{ env.IMAGE_NAME }}
 
@@ -399,7 +399,7 @@ jobs:
       - name: Configure AWS credentials for manifest signing
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ needs.set-versions-matrix.outputs.aws_account_id }}:role/SIG_Atomic_GHA_Container_Signing
+          role-to-assume: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
           role-session-name: almalinux-manifest-signing-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 600  # 10 minutes
