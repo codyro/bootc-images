@@ -75,11 +75,14 @@ jobs:
             echo "image_registry=${{ secrets.IMAGE_REGISTRY }}" >> $GITHUB_OUTPUT
             echo "registry_user=${{ secrets.REGISTRY_USER }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.REGISTRY_PASSWORD }}" >> $GITHUB_OUTPUT
+            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
           else
             # Testing: use GitHub Container Registry
             echo "image_registry=ghcr.io" >> $GITHUB_OUTPUT
             echo "registry_user=${{ github.actor }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
+            # Use the same AWS role ARN for forks
+            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
           fi
 
   build-amd64:
@@ -109,7 +112,7 @@ jobs:
         REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
         REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
         # NEW: KMS signing configuration
-        AWS_ROLE_ARN: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing
+        AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
         AWS_REGION: ${{ env.AWS_REGION }}
         KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -186,6 +189,7 @@ jobs:
     if: ${{ always() && contains(join(needs.*.result, ','), 'success') }}
     env:
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
+      AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
     strategy:
       fail-fast: false
       matrix:
@@ -198,7 +202,7 @@ jobs:
       - name: Check AWS credentials
         id: check-aws
         run: |
-          if [[ -n "${{ env.AWS_ACCOUNT_ID }}" ]]; then
+          if [[ -n "${{ env.AWS_ROLE_ARN }}" ]]; then
             echo "aws_available=true" >> $GITHUB_OUTPUT
           else
             echo "aws_available=false" >> $GITHUB_OUTPUT
@@ -209,7 +213,7 @@ jobs:
         if: steps.check-aws.outputs.aws_available == 'true'
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          role-to-assume: arn:aws:iam::${{ env.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing
+          role-to-assume: ${{ env.AWS_ROLE_ARN }}
           role-session-name: almalinux-signature-verification-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
           role-duration-seconds: 900  # 15 min for AWS
