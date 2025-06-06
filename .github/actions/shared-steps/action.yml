@@ -198,8 +198,8 @@ runs:
         # Debug: Check if AWS credentials are available
         aws sts get-caller-identity || echo "AWS credentials check failed"
 
-        # Sign the image (pass AWS credentials to sudo environment)
-        sudo -E /tmp/.cosign/cosign sign --yes --key $KMS_KEY $IMAGE_REF
+        # Sign the image (pass only AWS credentials to sudo environment)
+        sudo AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" AWS_REGION="$AWS_REGION" AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" /tmp/.cosign/cosign sign --yes --key $KMS_KEY $IMAGE_REF
 
         # Add build attestation with provenance information
         BUILD_ATTESTATION=$(cat <<EOF
@@ -242,7 +242,7 @@ runs:
         echo "$BUILD_ATTESTATION" > /tmp/build-attestation.json
 
         # Sign the attestation
-        sudo -E /tmp/.cosign/cosign attest --yes --key $KMS_KEY \
+        sudo AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" AWS_REGION="$AWS_REGION" AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" /tmp/.cosign/cosign attest --yes --key $KMS_KEY \
           --predicate /tmp/build-attestation.json \
           $IMAGE_REF
 
@@ -266,7 +266,7 @@ runs:
         IMAGE_REF: ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
       run: |
         echo "Verifying signature..."
-        sudo -E /tmp/.cosign/cosign verify --key $KMS_KEY $IMAGE_REF
+        sudo AWS_ACCESS_KEY_ID="$AWS_ACCESS_KEY_ID" AWS_SECRET_ACCESS_KEY="$AWS_SECRET_ACCESS_KEY" AWS_SESSION_TOKEN="$AWS_SESSION_TOKEN" AWS_REGION="$AWS_REGION" AWS_DEFAULT_REGION="$AWS_DEFAULT_REGION" /tmp/.cosign/cosign verify --key $KMS_KEY $IMAGE_REF
         echo "Signature verification successful"
 
     - name: Create Job Outputs
