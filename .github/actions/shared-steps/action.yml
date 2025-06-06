@@ -193,8 +193,8 @@ runs:
       run: |
         echo "Signing with KMS key: $KMS_KEY"
 
-        # Sign the image
-        sudo /tmp/.cosign/cosign sign --yes --key $KMS_KEY $IMAGE_REF
+        # Sign the image (pass AWS credentials to sudo environment)
+        sudo -E /tmp/.cosign/cosign sign --yes --key $KMS_KEY $IMAGE_REF
 
         # Add build attestation with provenance information
         BUILD_ATTESTATION=$(cat <<EOF
@@ -237,7 +237,7 @@ runs:
         echo "$BUILD_ATTESTATION" > /tmp/build-attestation.json
 
         # Sign the attestation
-        sudo /tmp/.cosign/cosign attest --yes --key $KMS_KEY \
+        sudo -E /tmp/.cosign/cosign attest --yes --key $KMS_KEY \
           --predicate /tmp/build-attestation.json \
           $IMAGE_REF
 
@@ -250,7 +250,7 @@ runs:
       run: |
         echo "Using legacy signing method"
         echo "${{ inputs.SIGNING_SECRET }}" > /tmp/.cosign/cosign.key
-        sudo /tmp/.cosign/cosign sign -y --key /tmp/.cosign/cosign.key ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
+        sudo -E /tmp/.cosign/cosign sign -y --key /tmp/.cosign/cosign.key ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
 
     # NEW: Verify the signature was created successfully
     - name: Verify Image Signature
@@ -261,7 +261,7 @@ runs:
         IMAGE_REF: ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
       run: |
         echo "Verifying signature..."
-        sudo /tmp/.cosign/cosign verify --key $KMS_KEY $IMAGE_REF
+        sudo -E /tmp/.cosign/cosign verify --key $KMS_KEY $IMAGE_REF
         echo "Signature verification successful"
 
     - name: Create Job Outputs
