@@ -191,8 +191,6 @@ jobs:
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
       AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
       DATE_STAMP: ${{ needs.set-versions-matrix.outputs.date_stamp }}
-      AWS_REGION: ${{ env.AWS_REGION }}
-      KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
     strategy:
       fail-fast: false
       matrix:
