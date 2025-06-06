@@ -193,7 +193,17 @@ runs:
       run: |
         echo "Signing with KMS key: $KMS_KEY"
 
-        # Verify KMS access
+        # Debug: List available KMS keys and aliases
+        echo "=== Debugging KMS access ==="
+        echo "AWS Region: ${{ inputs.AWS_REGION }}"
+        echo "KMS Key ID: ${{ inputs.KMS_KEY_ID }}"
+        echo "Available KMS aliases:"
+        aws kms list-aliases --limit 20 || echo "Failed to list aliases"
+        echo "Available KMS keys (first 5):"
+        aws kms list-keys --limit 5 || echo "Failed to list keys"
+        
+        # Try to describe the key
+        echo "Attempting to describe key: ${{ inputs.KMS_KEY_ID }}"
         aws kms describe-key --key-id ${{ inputs.KMS_KEY_ID }}
 
         # Sign the image
