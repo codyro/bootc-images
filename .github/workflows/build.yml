@@ -41,6 +41,7 @@ jobs:
       image_registry: ${{ steps.set-aws-role.outputs.image_registry }}
       registry_user: ${{ steps.set-aws-role.outputs.registry_user }}
       registry_password: ${{ steps.set-aws-role.outputs.registry_password }}
+      aws_role_arn: ${{ steps.set-aws-role.outputs.aws_role_arn }}
     steps:
       - name: Set matrix
         id: set-matrix
@@ -75,14 +76,14 @@ jobs:
             echo "image_registry=${{ secrets.IMAGE_REGISTRY }}" >> $GITHUB_OUTPUT
             echo "registry_user=${{ secrets.REGISTRY_USER }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.REGISTRY_PASSWORD }}" >> $GITHUB_OUTPUT
-            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
+            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID || '' }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
           else
             # Testing: use GitHub Container Registry
             echo "image_registry=ghcr.io" >> $GITHUB_OUTPUT
             echo "registry_user=${{ github.actor }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
             # Use the same AWS role ARN for forks
-            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
+            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID || '' }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
           fi
 
   build-amd64:
@@ -99,26 +100,29 @@ jobs:
       DATE_STAMP: ${{ needs.set-versions-matrix.outputs.date_stamp }}
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    - uses: ./.github/actions/shared-steps
-      name: Build and Push
-      with:
-        VERSION_MAJOR: ${{ matrix.VERSION_MAJOR }}
-        DATE_STAMP: ${{ env.DATE_STAMP }}
-        IMAGE_REGISTRY: ${{ needs.set-versions-matrix.outputs.image_registry }}
-        REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
-        REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
-        # NEW: KMS signing configuration
-        AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
-        AWS_REGION: ${{ env.AWS_REGION }}
-        KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - uses: ./.github/actions/shared-steps
+        name: Build and Push
+        with:
+          VERSION_MAJOR: ${{ matrix.VERSION_MAJOR }}
+          DATE_STAMP: ${{ env.DATE_STAMP }}
+          IMAGE_REGISTRY: ${{ needs.set-versions-matrix.outputs.image_registry }}
+          REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
+          REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
+          # NEW: KMS signing configuration
+          AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
   build-amd64-v2:
-    if: ${{ always() && (contains(fromJSON(needs.set-versions-matrix.outputs.matrix), '10') || contains(fromJSON(needs.set-versions-matrix.outputs.matrix), '10-kitten')) }}
+    if: >
+      ${{ always() &&
+      (contains(fromJSON(needs.set-versions-matrix.outputs.matrix), '10') ||
+      contains(fromJSON(needs.set-versions-matrix.outputs.matrix), '10-kitten')) }}
     name: amd64-v2 image
     runs-on: ubuntu-24.04
     needs: [set-versions-matrix]
@@ -134,22 +138,22 @@ jobs:
       DATE_STAMP: ${{ needs.set-versions-matrix.outputs.date_stamp }}
 
     steps:
-    - uses: actions/checkout@v4
-      with:
-        submodules: true
+      - uses: actions/checkout@v4
+        with:
+          submodules: true
 
-    - uses: ./.github/actions/shared-steps
-      name: Build and Push
-      with:
-        VERSION_MAJOR: ${{ matrix.VERSION_MAJOR }}
-        DATE_STAMP: ${{ env.DATE_STAMP }}
-        IMAGE_REGISTRY: ${{ needs.set-versions-matrix.outputs.image_registry }}
-        REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
-        REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
-        # NEW: KMS signing configuration
-        AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
-        AWS_REGION: ${{ env.AWS_REGION }}
-        KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
+      - uses: ./.github/actions/shared-steps
+        name: Build and Push
+        with:
+          VERSION_MAJOR: ${{ matrix.VERSION_MAJOR }}
+          DATE_STAMP: ${{ env.DATE_STAMP }}
+          IMAGE_REGISTRY: ${{ needs.set-versions-matrix.outputs.image_registry }}
+          REGISTRY_USER: ${{ needs.set-versions-matrix.outputs.registry_user }}
+          REGISTRY_PASSWORD: ${{ needs.set-versions-matrix.outputs.registry_password }}
+          # NEW: KMS signing configuration
+          AWS_ROLE_ARN: ${{ needs.set-versions-matrix.outputs.aws_role_arn }}
+          AWS_REGION: ${{ env.AWS_REGION }}
+          KMS_KEY_ID: ${{ env.KMS_KEY_ID }}
 
   build-arm64:
     name: arm64 image
@@ -322,7 +326,9 @@ jobs:
         with:
           registry: ${{ needs.set-versions-matrix.outputs.image_registry }}
           username: ${{ needs.set-versions-matrix.outputs.registry_user }}
-          password: ${{ needs.set-versions-matrix.outputs.image_registry == 'ghcr.io' && secrets.GITHUB_TOKEN || needs.set-versions-matrix.outputs.registry_password }}
+          password: >
+            ${{ needs.set-versions-matrix.outputs.image_registry == 'ghcr.io' &&
+            secrets.GITHUB_TOKEN || needs.set-versions-matrix.outputs.registry_password }}
         # Login is always required for all registries
         if: ${{ needs.set-versions-matrix.outputs.registry_user != '' }}
 
@@ -419,7 +425,9 @@ jobs:
             IMAGE_DEST="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}"
 
             echo "Signing test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
-            cosign sign --yes --key $KMS_KEY ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} || echo "Failed to sign test manifest (this is expected for testing)"
+            cosign sign --yes --key $KMS_KEY \
+              ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} ||
+              echo "Failed to sign test manifest (this is expected for testing)"
 
             exit 0
           fi
