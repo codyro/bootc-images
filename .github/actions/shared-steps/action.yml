@@ -21,7 +21,7 @@ inputs:
   KMS_KEY_ID:
     description: 'KMS key ID or alias for signing'
     required: true
-    default: 'SIG_Atomic_Container_Signing_GH_CI'
+    default: 'alias/SIG_Atomic_Container_Signing_GH_CI'
   # Legacy support - if provided, will use keyless signing instead of KMS
   SIGNING_SECRET:
     required: false
