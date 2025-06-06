@@ -76,15 +76,19 @@ jobs:
             echo "image_registry=${{ secrets.IMAGE_REGISTRY }}" >> $GITHUB_OUTPUT
             echo "registry_user=${{ secrets.REGISTRY_USER }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.REGISTRY_PASSWORD }}" >> $GITHUB_OUTPUT
-            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID || '' }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
+            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
           else
             # Testing: use GitHub Container Registry
             echo "image_registry=ghcr.io" >> $GITHUB_OUTPUT
             echo "registry_user=${{ github.actor }}" >> $GITHUB_OUTPUT
             echo "registry_password=${{ secrets.GITHUB_TOKEN }}" >> $GITHUB_OUTPUT
-            # Use the same AWS role ARN for forks
-            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID || '' }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
+            # For forks, also construct the AWS role ARN if AWS_ACCOUNT_ID is available
+            echo "aws_role_arn=arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing" >> $GITHUB_OUTPUT
           fi
+          
+          # Debug output
+          echo "Repository owner: ${{ github.repository_owner }}"
+          echo "AWS Account ID available: ${{ secrets.AWS_ACCOUNT_ID != '' }}"
 
   build-amd64:
     name: amd64 image
