@@ -225,7 +225,7 @@ jobs:
       - name: Verify signatures
         if: steps.check-aws.outputs.aws_available == 'true'
         env:
-          KMS_KEY: awskms:///${{ env.KMS_KEY_ID }}
+          KMS_KEY: awskms:///alias/${{ env.KMS_KEY_ID }}
         run: |
           # Handle different registry destinations for verification
           if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ghcr.io" ]]; then
@@ -412,7 +412,7 @@ jobs:
 
       - name: Sign multi-arch manifests
         env:
-          KMS_KEY: awskms:///${{ env.KMS_KEY_ID }}
+          KMS_KEY: awskms:///alias/${{ env.KMS_KEY_ID }}
         run: |
           IMAGE_DEST=${{ needs.set-versions-matrix.outputs.image_registry }}/${{ env.IMAGE_NAME }}
 

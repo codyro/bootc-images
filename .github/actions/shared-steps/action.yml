@@ -188,23 +188,10 @@ runs:
       if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') && inputs.AWS_ROLE_ARN != '' }}
       shell: bash
       env:
-        KMS_KEY: awskms:///${{ inputs.KMS_KEY_ID }}
+        KMS_KEY: awskms:///alias/${{ inputs.KMS_KEY_ID }}
         IMAGE_REF: ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
       run: |
         echo "Signing with KMS key: $KMS_KEY"
-
-        # Debug: List available KMS keys and aliases
-        echo "=== Debugging KMS access ==="
-        echo "AWS Region: ${{ inputs.AWS_REGION }}"
-        echo "KMS Key ID: ${{ inputs.KMS_KEY_ID }}"
-        echo "Available KMS aliases:"
-        aws kms list-aliases --limit 20 || echo "Failed to list aliases"
-        echo "Available KMS keys (first 5):"
-        aws kms list-keys --limit 5 || echo "Failed to list keys"
-        
-        # Try to describe the key
-        echo "Attempting to describe key: ${{ inputs.KMS_KEY_ID }}"
-        aws kms describe-key --key-id ${{ inputs.KMS_KEY_ID }}
 
         # Sign the image
         sudo /tmp/.cosign/cosign sign --yes --key $KMS_KEY $IMAGE_REF
