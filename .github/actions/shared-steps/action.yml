@@ -188,7 +188,7 @@ runs:
       if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') && inputs.AWS_ROLE_ARN != '' }}
       shell: bash
       env:
-        KMS_KEY: awskms:///alias/${{ inputs.KMS_KEY_ID }}
+        KMS_KEY: awskms:///${{ inputs.KMS_KEY_ID }}
         IMAGE_REF: ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
       run: |
         echo "Signing with KMS key: $KMS_KEY"
@@ -262,7 +262,7 @@ runs:
       if: ${{ github.event_name != 'pull_request' && (env.res != 0 || github.event_name == 'workflow_dispatch') && inputs.AWS_ROLE_ARN != '' }}
       shell: bash
       env:
-        KMS_KEY: awskms:///alias/${{ inputs.KMS_KEY_ID }}
+        KMS_KEY: awskms:///${{ inputs.KMS_KEY_ID }}
         IMAGE_REF: ${{ steps.push.outputs.image-ref }}@${{ steps.push.outputs.digest }}
       run: |
         echo "Verifying signature..."
