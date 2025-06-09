@@ -358,29 +358,53 @@ jobs:
             # For testing, create a simple manifest with available images
             echo "Creating test manifest for GitHub Container Registry"
 
+            # Get the actual version used for tagging (same logic as shared-steps)
+            VERSION_MAJOR=${{ matrix.VERSION_MAJOR }}
+            if [[ "${VERSION_MAJOR}" != *'kitten'* ]]; then
+              # For production versions, get the minor version like shared-steps does
+              for MACHINE in x86_64 aarch64; do
+                almalinux_release=https://repo.almalinux.org/almalinux/almalinux-release-latest-${VERSION_MAJOR}.${MACHINE}.rpm
+                release=$(rpm -q --qf="%{VERSION}\n" ${almalinux_release} 2>/dev/null || echo "${VERSION_MAJOR}")
+                if [[ "${MACHINE}" == "x86_64" ]]; then
+                  VERSION_AMD64=${release}
+                else
+                  VERSION_ARM64=${release}
+                fi
+              done
+            else
+              VERSION_AMD64=${VERSION_MAJOR}
+              VERSION_ARM64=${VERSION_MAJOR}
+            fi
+
             # Check what images exist and create manifest accordingly
             AVAILABLE_IMAGES=""
 
             # Check for amd64
-            if docker manifest inspect ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-amd64 >/dev/null 2>&1; then
-              AVAILABLE_IMAGES="${AVAILABLE_IMAGES} ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-amd64"
+            if docker manifest inspect ${IMAGE_DEST}:${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64 >/dev/null 2>&1; then
+              AVAILABLE_IMAGES="${AVAILABLE_IMAGES} ${IMAGE_DEST}:${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64"
             fi
 
             # Check for arm64
-            if docker manifest inspect ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-arm64 >/dev/null 2>&1; then
-              AVAILABLE_IMAGES="${AVAILABLE_IMAGES} ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-arm64"
+            if docker manifest inspect ${IMAGE_DEST}:${VERSION_ARM64}-${{ env.DATE_STAMP }}-arm64 >/dev/null 2>&1; then
+              AVAILABLE_IMAGES="${AVAILABLE_IMAGES} ${IMAGE_DEST}:${VERSION_ARM64}-${{ env.DATE_STAMP }}-arm64"
             fi
 
             # Check for amd64-v2
-            if docker manifest inspect ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-amd64-v2 >/dev/null 2>&1; then
-              AVAILABLE_IMAGES="${AVAILABLE_IMAGES} ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-amd64-v2"
+            if [[ "${{ matrix.VERSION_MAJOR }}" == "10" || "${{ matrix.VERSION_MAJOR }}" == "10-kitten" ]]; then
+              if docker manifest inspect ${IMAGE_DEST}:${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64-v2 >/dev/null 2>&1; then
+                AVAILABLE_IMAGES="${AVAILABLE_IMAGES} ${IMAGE_DEST}:${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64-v2"
+              fi
             fi
 
             if [[ -n "${AVAILABLE_IMAGES}" ]]; then
               # Create test manifest
               docker manifest create ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} ${AVAILABLE_IMAGES}
               docker manifest push ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}
-              echo "Created test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
+              
+              # Get the manifest digest for signing
+              MANIFEST_DIGEST=$(docker manifest inspect ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} --verbose | jq -r '.Descriptor.digest')
+              echo "MANIFEST_DIGEST=${MANIFEST_DIGEST}" >> $GITHUB_ENV
+              echo "Created test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}@${MANIFEST_DIGEST}"
             fi
 
             exit 0
@@ -437,9 +461,13 @@ jobs:
           if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ghcr.io" ]]; then
             IMAGE_DEST="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}"
 
-            echo "Signing test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
-            cosign sign --yes --key $KMS_KEY \
-              ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}
+            if [[ -n "${{ env.MANIFEST_DIGEST }}" ]]; then
+              echo "Signing test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}@${{ env.MANIFEST_DIGEST }}"
+              cosign sign --yes --key $KMS_KEY \
+                ${IMAGE_DEST}@${{ env.MANIFEST_DIGEST }}
+            else
+              echo "No manifest digest available, skipping signing"
+            fi
 
             exit 0
           fi
