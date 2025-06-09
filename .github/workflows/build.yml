@@ -254,9 +254,12 @@ jobs:
             fi
 
             # For GHCR, verify the manifest that was created (not individual arch images)
-            manifest_tag="${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
-            echo "Verifying signature for manifest ${IMAGE_DEST}:${manifest_tag}"
-            cosign verify --key $KMS_KEY ${IMAGE_DEST}:${manifest_tag}
+            if [[ -n "${{ env.MANIFEST_TAG }}" ]]; then
+              echo "Verifying signature for manifest ${IMAGE_DEST}:${{ env.MANIFEST_TAG }}"
+              cosign verify --key $KMS_KEY ${IMAGE_DEST}:${{ env.MANIFEST_TAG }}
+            else
+              echo "No manifest tag available, skipping verification"
+            fi
 
             exit 0
           fi
@@ -397,14 +400,19 @@ jobs:
             fi
 
             if [[ -n "${AVAILABLE_IMAGES}" ]]; then
+              # Use the version from the first available image for the manifest tag
+              MANIFEST_VERSION="${VERSION_AMD64}"
+              MANIFEST_TAG="${MANIFEST_VERSION}-${{ env.DATE_STAMP }}"
+              
               # Create test manifest
-              docker manifest create ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} ${AVAILABLE_IMAGES}
-              docker manifest push ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}
+              docker manifest create ${IMAGE_DEST}:${MANIFEST_TAG} ${AVAILABLE_IMAGES}
+              docker manifest push ${IMAGE_DEST}:${MANIFEST_TAG}
               
               # Get the manifest digest for signing
-              MANIFEST_DIGEST=$(docker manifest inspect ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} --verbose | jq -r '.Descriptor.digest')
+              MANIFEST_DIGEST=$(docker manifest inspect ${IMAGE_DEST}:${MANIFEST_TAG} --verbose | jq -r '.Descriptor.digest')
               echo "MANIFEST_DIGEST=${MANIFEST_DIGEST}" >> $GITHUB_ENV
-              echo "Created test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}@${MANIFEST_DIGEST}"
+              echo "MANIFEST_TAG=${MANIFEST_TAG}" >> $GITHUB_ENV
+              echo "Created test manifest: ${IMAGE_DEST}:${MANIFEST_TAG}@${MANIFEST_DIGEST}"
             fi
 
             exit 0
@@ -461,12 +469,12 @@ jobs:
           if [[ "${{ needs.set-versions-matrix.outputs.image_registry }}" == "ghcr.io" ]]; then
             IMAGE_DEST="ghcr.io/${{ github.repository_owner }}/${{ github.event.repository.name }}/${{ env.IMAGE_NAME }}"
 
-            if [[ -n "${{ env.MANIFEST_DIGEST }}" ]]; then
-              echo "Signing test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}@${{ env.MANIFEST_DIGEST }}"
+            if [[ -n "${{ env.MANIFEST_DIGEST }}" && -n "${{ env.MANIFEST_TAG }}" ]]; then
+              echo "Signing test manifest: ${IMAGE_DEST}:${{ env.MANIFEST_TAG }}@${{ env.MANIFEST_DIGEST }}"
               cosign sign --yes --key $KMS_KEY \
                 ${IMAGE_DEST}@${{ env.MANIFEST_DIGEST }}
             else
-              echo "No manifest digest available, skipping signing"
+              echo "No manifest digest or tag available, skipping signing"
             fi
 
             exit 0
