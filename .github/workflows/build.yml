@@ -185,7 +185,7 @@ jobs:
   verify-signatures:
     name: Verify signatures
     runs-on: ubuntu-24.04
-    needs: [set-versions-matrix, build-amd64, build-arm64]
+    needs: [set-versions-matrix, build-amd64, build-arm64, push-manifest]
     if: ${{ always() && contains(join(needs.*.result, ','), 'success') }}
     env:
       AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID }}
@@ -253,22 +253,10 @@ jobs:
               VERSION_ARM64=${VERSION_MAJOR}
             fi
 
-            # AMD64
-            amd64_tag="${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64"
-            echo "Verifying signature for ${IMAGE_DEST}:${amd64_tag}"
-            cosign verify --key $KMS_KEY ${IMAGE_DEST}:${amd64_tag} || echo "Failed to verify amd64 signature (expected for testing)"
-
-            # ARM64
-            arm64_tag="${VERSION_ARM64}-${{ env.DATE_STAMP }}-arm64"
-            echo "Verifying signature for ${IMAGE_DEST}:${arm64_tag}"
-            cosign verify --key $KMS_KEY ${IMAGE_DEST}:${arm64_tag} || echo "Failed to verify arm64 signature (expected for testing)"
-
-            # AMD64-v2 (if exists)
-            if [[ "${{ matrix.VERSION_MAJOR }}" == "10" || "${{ matrix.VERSION_MAJOR }}" == "10-kitten" ]]; then
-              amd64v2_tag="${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64-v2"
-              echo "Verifying signature for ${IMAGE_DEST}:${amd64v2_tag}"
-              cosign verify --key $KMS_KEY ${IMAGE_DEST}:${amd64v2_tag} || echo "Failed to verify amd64-v2 signature (expected for testing)"
-            fi
+            # For GHCR, verify the manifest that was created (not individual arch images)
+            manifest_tag="${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
+            echo "Verifying signature for manifest ${IMAGE_DEST}:${manifest_tag}"
+            cosign verify --key $KMS_KEY ${IMAGE_DEST}:${manifest_tag}
 
             exit 0
           fi
@@ -306,10 +294,21 @@ jobs:
             cosign verify --key $KMS_KEY ${IMAGE_DEST}:${amd64v2_tag} || echo "Failed to verify amd64-v2 signature"
           fi
 
+          # Also verify the signed manifests
+          VERSION_MINOR=${VERSION_MINOR_x86_64}
+          manifest_tags="latest ${{ matrix.VERSION_MAJOR }} ${{ matrix.VERSION_MAJOR }}${VERSION_MINOR}-${{ env.DATE_STAMP }}"
+          [[ ${{ matrix.VERSION_MAJOR }} != *'kitten'* ]] && manifest_tags="${manifest_tags} ${{ matrix.VERSION_MAJOR }}${VERSION_MINOR}"
+          
+          for tag in $manifest_tags; do
+            [ ${{ matrix.VERSION_MAJOR }} != ${{ env.LATEST_MAJOR }} -a "${tag}" = "latest" ] && continue
+            echo "Verifying signature for manifest ${IMAGE_DEST}:${tag}"
+            cosign verify --key $KMS_KEY ${IMAGE_DEST}:${tag} || echo "Failed to verify manifest signature for ${tag}"
+          done
+
   push-manifest:
     if: ${{ always() && contains(join(needs.*.result, ','), 'success') }}
     name: Push manifest
-    needs: [set-versions-matrix, build-amd64, build-arm64, verify-signatures]
+    needs: [set-versions-matrix, build-amd64, build-arm64]
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
@@ -440,8 +439,7 @@ jobs:
 
             echo "Signing test manifest: ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}"
             cosign sign --yes --key $KMS_KEY \
-              ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }} ||
-              echo "Failed to sign test manifest (this is expected for testing)"
+              ${IMAGE_DEST}:${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}
 
             exit 0
           fi
