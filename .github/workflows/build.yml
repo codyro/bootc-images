@@ -402,7 +402,7 @@ jobs:
           role-to-assume: arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/SIG_Atomic_GHA_Container_Signing
           role-session-name: almalinux-manifest-signing-${{ github.run_id }}
           aws-region: ${{ env.AWS_REGION }}
-          role-duration-seconds: 600  # 10 minutes
+          role-duration-seconds: 900  # 15 minutes
           audience: sts.amazonaws.com
 
       - name: Install Cosign for manifest signing
