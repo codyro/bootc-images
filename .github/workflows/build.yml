@@ -235,19 +235,37 @@ jobs:
             # For GHCR, use simplified tag format without version parsing
             echo "Verifying signatures for GitHub Container Registry"
 
+            # Get the actual version used for tagging (same logic as shared-steps)
+            VERSION_MAJOR=${{ matrix.VERSION_MAJOR }}
+            if [[ "${VERSION_MAJOR}" != *'kitten'* ]]; then
+              # For production versions, get the minor version like shared-steps does
+              for MACHINE in x86_64 aarch64; do
+                almalinux_release=https://repo.almalinux.org/almalinux/almalinux-release-latest-${VERSION_MAJOR}.${MACHINE}.rpm
+                release=$(rpm -q --qf="%{VERSION}\n" ${almalinux_release} 2>/dev/null || echo "${VERSION_MAJOR}")
+                if [[ "${MACHINE}" == "x86_64" ]]; then
+                  VERSION_AMD64=${release}
+                else
+                  VERSION_ARM64=${release}
+                fi
+              done
+            else
+              VERSION_AMD64=${VERSION_MAJOR}
+              VERSION_ARM64=${VERSION_MAJOR}
+            fi
+
             # AMD64
-            amd64_tag="${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-amd64"
+            amd64_tag="${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64"
             echo "Verifying signature for ${IMAGE_DEST}:${amd64_tag}"
             cosign verify --key $KMS_KEY ${IMAGE_DEST}:${amd64_tag} || echo "Failed to verify amd64 signature (expected for testing)"
 
             # ARM64
-            arm64_tag="${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-arm64"
+            arm64_tag="${VERSION_ARM64}-${{ env.DATE_STAMP }}-arm64"
             echo "Verifying signature for ${IMAGE_DEST}:${arm64_tag}"
             cosign verify --key $KMS_KEY ${IMAGE_DEST}:${arm64_tag} || echo "Failed to verify arm64 signature (expected for testing)"
 
             # AMD64-v2 (if exists)
             if [[ "${{ matrix.VERSION_MAJOR }}" == "10" || "${{ matrix.VERSION_MAJOR }}" == "10-kitten" ]]; then
-              amd64v2_tag="${{ matrix.VERSION_MAJOR }}-${{ env.DATE_STAMP }}-amd64-v2"
+              amd64v2_tag="${VERSION_AMD64}-${{ env.DATE_STAMP }}-amd64-v2"
               echo "Verifying signature for ${IMAGE_DEST}:${amd64v2_tag}"
               cosign verify --key $KMS_KEY ${IMAGE_DEST}:${amd64v2_tag} || echo "Failed to verify amd64-v2 signature (expected for testing)"
             fi
